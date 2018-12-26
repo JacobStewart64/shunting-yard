@@ -138,9 +138,9 @@ std::queue<int> shunting_yard(std::string& expression_str)
     std::stack<char> operator_stack;
     std::stringstream expression(expression_str);
 
-    extract_and_push_terms(expression, output_queue, operator_stack);
+    extract_and_push_terms(expression, output_queue, operator_stack); //numbers str8 2 output, ops 2 stack
 
-    push_rest_of_operators(output_queue, operator_stack); //always pushing onto output_queue (same above)
+    push_rest_of_operators(output_queue, operator_stack); //always pushing onto output_queue
 
     return output_queue;
 }
