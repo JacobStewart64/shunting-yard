@@ -26,7 +26,6 @@ int get_precedence(char op)
     if (op == '/') return 1;
     if (op == '+') return 0;
     if (op == '-') return 0;
-    assert(false);
     return -1;
 }
 
@@ -35,14 +34,102 @@ bool op_is_equal_precedence(char op, char op2)
     return get_precedence(op) == get_precedence(op2);
 }
 
-bool op_is_equal_precedence_and_left_associative(char op, char op2)
-{
-    return op_is_left_associative(op) && op_is_equal_precedence(op, op2);
-}
-
 bool op_is_lower_precedence(char op, char op2)
 {
     return get_precedence(op) < get_precedence(op2);
+}
+
+bool extract_and_push_term(std::stringstream& expression,
+    std::queue<int>& output_queue,
+    std::stack<char>& operator_stack)
+{
+    if (!(expression >> std::ws))
+            return false;
+        
+    if (std::isdigit(expression.peek()))
+    {
+        //it is a number
+        int number;
+        if (!(expression >> number))
+            return false;
+        
+        assert(number < (INT32_MAX - 128));
+        output_queue.push(number);
+    }
+    else if (expression.peek() == '(')
+    {
+        //left paren
+        char left_paren;
+        if (!(expression >> left_paren))
+            return false;
+        
+        operator_stack.push(left_paren);
+    }
+    else if (expression.peek() == ')')
+    {
+        //right paren
+        char c;
+        if (!(expression >> c))
+            return false;
+        
+        while (operator_stack.top() != '(')
+        {
+            char op = operator_stack.top();
+            operator_stack.pop();
+            output_queue.push(INT32_MAX - op);
+        }
+
+        operator_stack.pop();
+    }
+    else
+    {
+        //it is an operator
+        char op;
+        if (!(expression >> op))
+            return false;
+        
+        if (operator_stack.size() > 0)
+        {
+            while ((op_is_lower_precedence(op, operator_stack.top()) ||
+                (op_is_left_associative(operator_stack.top()) &&
+                op_is_equal_precedence(operator_stack.top(), op))) &&
+                operator_stack.top() != '(')
+            {
+                char opc = operator_stack.top();
+                operator_stack.pop();
+                output_queue.push(INT32_MAX - opc);
+
+                if (operator_stack.size() == 0)
+                    break;
+            }
+        }
+
+        operator_stack.push(op);
+    }
+
+    return true;
+}
+
+void push_rest_of_operators(std::queue<int>& output_queue, std::stack<char>& operator_stack)
+{
+    while (operator_stack.size() > 0)
+    {
+        char op = operator_stack.top();
+        operator_stack.pop();
+        output_queue.push(INT32_MAX - op);
+    }
+}
+
+void extract_and_push_terms(std::stringstream& expression,
+    std::queue<int>& output_queue,
+    std::stack<char>& operator_stack)
+{
+    while (true)
+    {
+        //when (expression >> foo) == false, break, stream seems a bit wonky in some cases.
+        if (!extract_and_push_term(expression, output_queue, operator_stack))
+            break;
+    }
 }
 
 std::queue<int> shunting_yard(std::string& expression_str)
@@ -51,86 +138,16 @@ std::queue<int> shunting_yard(std::string& expression_str)
     std::stack<char> operator_stack;
     std::stringstream expression(expression_str);
 
-    while (expression.good())
-    {
-        if (!(expression >> std::ws))
-            break;
-        
-        if (std::isdigit(expression.peek()))
-        {
-            //it is a number
-            int number;
-            if (!(expression >> number))
-                break;
-            
-            assert(number < (INT32_MAX - 128));
-            output_queue.push(number);
-        }
-        else if (expression.peek() == '(')
-        {
-            //left paren
-            char left_paren;
-            if (!(expression >> left_paren))
-                break;
-            
-            operator_stack.push(left_paren);
-        }
-        else if (expression.peek() == ')')
-        {
-            //right paren
-            char c;
-            if (!(expression >> c))
-                break;
-            
-            while (operator_stack.top() != '(')
-            {
-                char op = operator_stack.top();
-                operator_stack.pop();
-                output_queue.push(INT32_MAX - op);
-            }
+    extract_and_push_terms(expression, output_queue, operator_stack);
 
-            assert(operator_stack.size() > 0);
-            operator_stack.pop();
-        }
-        else
-        {
-            //it is an operator
-            char op;
-            if (!(expression >> op))
-                break;
-            
-            if (operator_stack.size() > 0)
-            {
-                while ((op_is_lower_precedence(op, operator_stack.top()) ||
-                    op_is_equal_precedence_and_left_associative(operator_stack.top(), op)) &&
-                    operator_stack.top() != '(')
-                {
-                    char opc = operator_stack.top();
-                    operator_stack.pop();
-                    output_queue.push(INT32_MAX - opc);
-
-                    if (operator_stack.size() == 0)
-                        break;
-                }
-            }
-
-            operator_stack.push(op);
-        }
-    }
-
-    while (operator_stack.size() > 0)
-    {
-        char op = operator_stack.top();
-        operator_stack.pop();
-        output_queue.push(INT32_MAX - op);
-    }
+    push_rest_of_operators(output_queue, operator_stack); //always pushing onto output_queue (same above)
 
     return output_queue;
 }
 
 bool is_unary_op(char op)
 {
-    //if (op == '!') return 3; //idk how right now
+    //FAKE NEWS
     return false;
 }
 
@@ -141,8 +158,7 @@ int do_op(int num1, int num2, char op)
     if (op == '/') return num2 / num1;
     if (op == '+') return num2 + num1;
     if (op == '-') return num2 - num1;
-    assert(false);
-    return 1;
+    return INT32_MIN;
 }
 
 int evaluate_queue(std::queue<int> output_queue)
@@ -150,23 +166,17 @@ int evaluate_queue(std::queue<int> output_queue)
     std::stack<int> number_stack;
     std::queue<char> op_queue;
 
-    assert(output_queue.size() > 0);
-
     while (output_queue.size() > 0 && output_queue.front() < (INT32_MAX - 128))
     {
         number_stack.push(output_queue.front());
         output_queue.pop();
     }
 
-    assert(output_queue.size() > 0);
-
     while (output_queue.size() > 0 && output_queue.front() >= (INT32_MAX - 128))
     {
         op_queue.push(INT32_MAX - output_queue.front());
         output_queue.pop();
     }
-
-    assert(output_queue.size() == 0);
 
     int last_num;
     if (number_stack.size() > 0)
@@ -187,7 +197,7 @@ int evaluate_queue(std::queue<int> output_queue)
         }
         else
         {
-            //do unary op?
+            //do unary op!
         }
     }
 
